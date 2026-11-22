@@ -10,4 +10,4 @@ services:
       TZ: Australia/Hobart
       # TRUST_PROXY: "1"
     volumes:
-      - ./data:/data
+      - ./data:/data:z # :z lets SELinux hosts (e.g. Oracle Linux) use the folder
