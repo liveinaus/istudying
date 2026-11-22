@@ -1,0 +1,237 @@
+name: Release
+
+run-name: Release ${{ inputs.tag || github.ref_name }}
+
+# Builds run here, in the public repo, so the private source repo spends no Actions minutes.
+# The source is checked out from liveinaus/istudying-code with a read-only token (SOURCE_REPO_TOKEN).
+# Started by scripts/release.sh in the source repo, which tags the source first.
+#
+#   v0.1.0, v0.1.0-patch-1   stable: images :<ver> and :latest, plus a GitHub release here
+#   v0.1.0-beta.1            beta: images :<ver> and :beta, plus a tag here
+#   dev-v0.1.0-1             dev: images :<tag> and :dev, plus a tag here
+#
+# Logs here are public, so a failing build can show source paths and snippets.
+
+on:
+  push:
+    tags:
+      - "v*"
+      - "dev-*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to release, for example v0.1.0, v0.1.0-beta.1 or dev-v0.1.0-1"
+        required: true
+      source_ref:
+        description: "Branch, tag or commit in the source repo. Empty means the same tag"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  SOURCE_REPO: liveinaus/istudying-code
+  IMAGE_REPO: istudying
+
+jobs:
+  meta:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.resolve.outputs.tag }}
+      semver: ${{ steps.resolve.outputs.semver }}
+      channel: ${{ steps.resolve.outputs.channel }}
+      source_ref: ${{ steps.resolve.outputs.source_ref }}
+    steps:
+      - name: Resolve tag, channel and source
+        id: resolve
+        env:
+          SOURCE_TOKEN: ${{ secrets.SOURCE_REPO_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
+          INPUT_TAG: ${{ inputs.tag }}
+          INPUT_SOURCE_REF: ${{ inputs.source_ref }}
+        run: |
+          set -euo pipefail
+          TAG="${INPUT_TAG:-$GITHUB_REF_NAME}"
+          if [[ "$TAG" =~ ^dev-.+ ]]; then
+            CHANNEL="dev";    SEMVER="$TAG"
+          elif [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-beta ]]; then
+            CHANNEL="beta";   SEMVER="${TAG#v}"
+          elif [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-patch-[0-9]+)?$ ]]; then
+            CHANNEL="stable"; SEMVER="${TAG#v}"
+          else
+            echo "::error::Tag must look like v0.1.0, v0.1.0-patch-1, v0.1.0-beta.1 or dev-v0.1.0-1, got '$TAG'"
+            exit 1
+          fi
+
+          if [ "$CHANNEL" = "stable" ] && gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::error::Release $TAG already exists."
+            exit 1
+          fi
+
+          SOURCE_REF="${INPUT_SOURCE_REF:-}"
+          if [ -z "$SOURCE_REF" ]; then
+            if git ls-remote --tags "https://x-access-token:${SOURCE_TOKEN}@github.com/${SOURCE_REPO}.git" "refs/tags/${TAG}" | grep -q .; then
+              SOURCE_REF="$TAG"
+            else
+              echo "::error::$SOURCE_REPO has no tag $TAG. Tag the source (scripts/release.sh does), or pass source_ref."
+              exit 1
+            fi
+          fi
+
+          {
+            echo "tag=$TAG"
+            echo "semver=$SEMVER"
+            echo "channel=$CHANNEL"
+            echo "source_ref=$SOURCE_REF"
+          } >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: meta
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-latest
+            suffix: amd64
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+            suffix: arm64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - name: Check out the private source
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ env.SOURCE_REPO }}
+          ref: ${{ needs.meta.outputs.source_ref }}
+          token: ${{ secrets.SOURCE_REPO_TOKEN }}
+          path: source
+
+      - name: Record the source commit
+        id: src
+        run: echo "sha=$(git -C source rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v4
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push platform image
+        uses: docker/build-push-action@v7
+        with:
+          context: source
+          platforms: ${{ matrix.platform }}
+          push: true
+          tags: ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_REPO }}:${{ needs.meta.outputs.semver }}-${{ matrix.suffix }}
+          build-args: |
+            ISTUDYING_VERSION=${{ needs.meta.outputs.semver }}
+          cache-from: type=gha,scope=${{ matrix.suffix }}
+          cache-to: type=gha,scope=${{ matrix.suffix }},mode=max
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.version=${{ needs.meta.outputs.semver }}
+            org.opencontainers.image.revision=${{ steps.src.outputs.sha }}
+
+  merge:
+    needs: [meta, build]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - uses: docker/setup-buildx-action@v4
+
+      - name: Create and push multi-platform manifests
+        run: |
+          set -euo pipefail
+          VER='${{ needs.meta.outputs.semver }}'
+          CHANNEL='${{ needs.meta.outputs.channel }}'
+          IMG='${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_REPO }}'
+          TAGS=(-t "${IMG}:${VER}")
+          if [ "$CHANNEL" = "stable" ]; then TAGS+=(-t "${IMG}:latest"); else TAGS+=(-t "${IMG}:${CHANNEL}"); fi
+          docker buildx imagetools create "${TAGS[@]}" "${IMG}:${VER}-amd64" "${IMG}:${VER}-arm64"
+
+  publish:
+    needs: [meta, merge]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Check out this repository
+        uses: actions/checkout@v7
+        with:
+          ref: main
+          path: public
+
+      - name: Check out the private source
+        if: needs.meta.outputs.channel == 'stable'
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ env.SOURCE_REPO }}
+          ref: ${{ needs.meta.outputs.source_ref }}
+          token: ${{ secrets.SOURCE_REPO_TOKEN }}
+          path: source
+
+      - name: Release notes from the changelog
+        if: needs.meta.outputs.channel == 'stable'
+        id: notes
+        run: |
+          set -euo pipefail
+          TAG='${{ needs.meta.outputs.tag }}'
+          NOTES="$RUNNER_TEMP/notes.md"
+          awk -v tag="## ${TAG}" '$0 == tag { on = 1; next } on && /^## / { exit } on { print }' \
+            source/CHANGELOG.md | sed -e '/./,$!d' > "$NOTES"
+          if ! grep -q '[^[:space:]]' "$NOTES"; then
+            echo "::error::CHANGELOG.md has no '## $TAG' section"
+            exit 1
+          fi
+          echo "path=$NOTES" >> "$GITHUB_OUTPUT"
+
+      - name: Publish the release and the changelog
+        if: needs.meta.outputs.channel == 'stable'
+        working-directory: public
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG='${{ needs.meta.outputs.tag }}'
+          cp ../source/CHANGELOG.md CHANGELOG.md
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add CHANGELOG.md
+          if ! git diff --cached --quiet; then
+            git commit -m "Publish $TAG"
+            git push origin HEAD:main
+          fi
+          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --target "$(git rev-parse HEAD)" \
+            --latest --title "iStudying $TAG" --notes-file '${{ steps.notes.outputs.path }}'
+
+      - name: Tag this repository
+        if: needs.meta.outputs.channel != 'stable'
+        working-directory: public
+        run: |
+          set -euo pipefail
+          TAG='${{ needs.meta.outputs.tag }}'
+          if git ls-remote --tags origin "refs/tags/$TAG" | grep -q .; then exit 0; fi
+          git tag "$TAG"
+          git push origin "refs/tags/$TAG"
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "### iStudying ${{ needs.meta.outputs.tag }} (${{ needs.meta.outputs.channel }})"
+            echo "- Source \`${{ env.SOURCE_REPO }}@${{ needs.meta.outputs.source_ref }}\`"
+            echo "- Image \`${{ env.IMAGE_REPO }}:${{ needs.meta.outputs.semver }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"

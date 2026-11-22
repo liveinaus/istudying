@@ -1,0 +1,13 @@
+services:
+  istudying:
+    image: ${ISTUDYING_IMAGE:-liveinaus/istudying:latest}
+    container_name: istudying
+    restart: unless-stopped
+    ports:
+      - "${ISTUDYING_PORT:-56622}:3100"
+    environment:
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env (openssl rand -hex 32)}
+      TZ: Australia/Hobart
+      # TRUST_PROXY: "1"
+    volumes:
+      - ./data:/data
