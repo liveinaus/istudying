@@ -1,5 +1,39 @@
 # Changelog
 
+## v0.2.0
+
+More NAPLAN subjects and question types, writing with AI-suggested marks, a parent report, scrap paper and a
+parent PIN.
+
+NAPLAN subjects and questions
+
+- Spelling, Grammar & punctuation, and Writing, beside Maths and Reading
+- New question types: tap the word, put in order, fill the gaps, sort into groups, and spelling read aloud with
+  the iPad's voice
+- 340 new original Year 3 and Year 5 questions and writing prompts (as drafts to review)
+
+Writing
+
+- Kids type with autocorrect and suggestions off, or write on paper and add photos
+- The AI reads the writing (handwriting too) and suggests marks for the 10 NAPLAN criteria, feedback for the kid
+  and notes for the parent; parents check and send the marks, and points are paid then
+- A Writing tab keeps every piece with its photos and marks, with progress by criterion
+
+For kids
+
+- Scrap paper for working out: squared paper for finger or Apple Pencil, side by side with the question or full
+  screen, on a big sheet that moves; each kid's choice is remembered
+- Excellent bonus for 1 mistake and well done bonus for 2, beside the perfect bonus (first tries only, tests of
+  10 or more questions)
+
+For parents
+
+- Report tab: right first try and how it's changing, time, activity by day, each subject against its level with
+  a suggestion, topics to teach and questions wrong more than once
+- Parent PIN: leaving the parent area locks it, so kids can't switch in
+- Learning hours: tests can only be started between set times
+- Daily tests pick subjects by a mix set for each subject
+
 ## v0.1.1
 
 Points and rewards, a daily test, hints, and support for more than one family.
