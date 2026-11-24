@@ -1,5 +1,45 @@
 # Changelog
 
+## v0.3.0
+
+A farm game where kids spend what they learn, Do you know? facts, a clearer parent test page, and backup and
+restore.
+
+Farm game (a Farm card on the kid home page; parents can turn it on or off for each kid)
+
+- A Tasmanian farm under kunanyi by the Derwent: grow seasonal crops, cook, raise chickens, sheep and cows, keep
+  a horse and race it once a day, farm salmon, oysters and mussels, go fishing, and use a forest, quarry, mine,
+  hydro dam and wind turbine
+- Farm coins are separate from learning points; parents set the exchange rate, how many points can go in each
+  day, and how much profit can come back out as points
+- Built for planning, not getting rich: energy refills overnight only (the farmer gets tired, sits down and
+  sleeps at zero), daily limits on cooking, shop stock and more, and modest profits that reward patience
+- Money lessons: a market with daily prices and supply and demand, a bank with loans, weekly interest and farm
+  insurance, and bad luck (frost, storms, floods, wallabies, pests, disease) that can be prepared for
+- Kids design their own farmer: girl or boy, hair, clothes in any colour, hats, extras and a pet
+- Seasons last a week by default (shared by the family, or the real Tasmanian calendar), with daily weather
+- A How to play guide in the game that always shows the family's current rules
+- A Farm tab for parents: every rule, shop stock, market prices and each kid's farm activity
+
+For kids
+
+- Do you know? facts: new facts each day for their school year (99 starter facts), sometimes with a quick question
+  just for fun, and a page to look back at every fact
+- Fix my mistakes: a mistake clears as soon as it's fixed
+
+For parents
+
+- The test page shows how each answer was reached: right first try, right on a later try, shown, or not
+  answered, with hints and explanations used
+- Optional AI look-alike maths questions in Fix my mistakes (off by default), checked before use and saved as
+  drafts
+- Kids have a Writing year in their profile; saved writing levels move to each kid's school year
+
+For admins
+
+- Back up all data (every family, the question bank, settings and writing photos) to one file, and restore it;
+  a restore saves the current data first
+
 ## v0.2.0
 
 More NAPLAN subjects and question types, writing with AI-suggested marks, a parent report, scrap paper and a
